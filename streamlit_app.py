@@ -1,3 +1,6 @@
+"""
+Streamlit UI for P2-ETF-CONTRASTIVE-LEARNING.
+"""
 import streamlit as st
 import numpy as np
 from datetime import datetime
@@ -6,6 +9,7 @@ from push_results import load_latest_result
 from us_calendar import next_trading_day
 
 st.set_page_config(page_title="Contrastive ETF Engine", layout="wide")
+
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
@@ -29,8 +33,24 @@ st.markdown('<div class="sub-header">SimCLR · Regime‑Invariant Embeddings · 
 tab_fi, tab_eq, tab_comb = st.tabs(["FI/Commodities", "Equity Sectors", "Combined Universe"])
 results = load_latest_result()
 
-def format_pct(v): return f"{v*100:.1f}%" if v is not None and not np.isnan(v) else "—"
-def format_num(v, d=2): return f"{v:.{d}f}" if v is not None and not np.isnan(v) else "—"
+
+def format_pct(value):
+    if value is None or (isinstance(value, float) and np.isnan(value)):
+        return "—"
+    return f"{value*100:.1f}%"
+
+
+def format_num(value, decimals=2):
+    if value is None or (isinstance(value, float) and np.isnan(value)):
+        return "—"
+    return f"{value:.{decimals}f}"
+
+
+def format_similarity(value):
+    if value is None or (isinstance(value, float) and np.isnan(value)):
+        return "—"
+    return f"{value:.3f}"
+
 
 def display_metrics(metrics):
     col1, col2, col3, col4, col5 = st.columns(5)
@@ -50,35 +70,43 @@ def display_metrics(metrics):
         st.markdown('<div class="metric-label">HIT RATE</div>', unsafe_allow_html=True)
         st.markdown(f'<div class="metric-value">{format_pct(metrics.get("hit_rate"))}</div>', unsafe_allow_html=True)
 
+
 def display_card(data, mode="global"):
     if not data or not data.get("ticker"):
         st.info("⏳ Waiting for training output...")
         return
-    ticker = data["ticker"]
+
+    ticker = data.get("ticker")
     pred_return = data.get("pred_return")
     similarity = data.get("similarity_score")
     metrics = data.get("metrics", {})
     next_day = next_trading_day(datetime.utcnow())
     gen_time = datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
+
     st.markdown('<div class="card">', unsafe_allow_html=True)
+
     col1, col2 = st.columns([2, 1])
     with col1:
         st.markdown(f'<div class="ticker-large">{ticker}</div>', unsafe_allow_html=True)
         if pred_return is not None:
-            st.markdown(f'<div class="pred-return">Predicted Return: {pred_return*100:.2f}%</div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="pred-return">Predicted Return: {format_pct(pred_return)}</div>', unsafe_allow_html=True)
         if similarity is not None:
-            st.markdown(f'<div class="meta-text">Similarity Score: {similarity:.3f}</div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="meta-text">Similarity Score: {format_similarity(similarity)}</div>', unsafe_allow_html=True)
         st.markdown(f'<div class="meta-text">Signal for {next_day.strftime("%Y-%m-%d")} · Generated {gen_time}</div>', unsafe_allow_html=True)
         st.markdown(f'<div class="source-badge">Source: {mode} Training</div>', unsafe_allow_html=True)
     with col2:
         if mode == "Adaptive":
             st.markdown(f'<div class="meta-text">Change Point: {data.get("change_point_date", "—")}</div>', unsafe_allow_html=True)
             st.markdown(f'<div class="meta-text">Lookback: {data.get("lookback_days", 0)} days</div>', unsafe_allow_html=True)
+
     st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
     st.markdown(f'<div class="meta-text">Test: {data.get("test_start", "")} → {data.get("test_end", "")} ({metrics.get("n_days", "—")} days)</div>', unsafe_allow_html=True)
     display_metrics(metrics)
+
     st.markdown('</div>', unsafe_allow_html=True)
 
+
+# Render tabs
 for tab, key in [(tab_fi, "fi"), (tab_eq, "equity"), (tab_comb, "combined")]:
     with tab:
         st.subheader(key.capitalize())
