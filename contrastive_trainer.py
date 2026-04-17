@@ -24,8 +24,8 @@ from push_results import push_daily_result
 def info_nce_loss(z_i, z_j, temperature):
     """InfoNCE loss for a batch of positive pairs."""
     batch_size = z_i.shape[0]
-    z = torch.cat([z_i, z_j], dim=0)  # [2N, dim]
-    sim = torch.mm(z, z.t()) / temperature  # cosine similarity (since z is normalized)
+    z = torch.cat([z_i, z_j], dim=0)
+    sim = torch.mm(z, z.t()) / temperature
     sim_i_j = torch.diag(sim, batch_size)
     sim_j_i = torch.diag(sim, -batch_size)
     positive_samples = torch.cat([sim_i_j, sim_j_i], dim=0).reshape(2 * batch_size, 1)
@@ -74,7 +74,6 @@ def train_contrastive(returns: pd.DataFrame, model: ContrastiveModel, device: st
             batch = batch.to(device)
             batch_size = batch.shape[0]
 
-            # Two augmented views
             view1 = apply_augmentations(batch, strength="medium")
             view2 = apply_augmentations(batch, strength="medium")
 
@@ -113,21 +112,20 @@ def predict_top_etf(embeddings: np.ndarray, returns: pd.DataFrame, tickers: list
     Given current market embedding, find k‑nearest historical windows
     and select the ETF with the best average forward return.
     """
-    # Compute cosine similarities
-    sims = np.dot(embeddings, current_embedding)  # embeddings are normalized
+    sims = np.dot(embeddings, current_embedding)
     top_k_idx = np.argsort(sims)[-k:]
 
-    # Forward returns: shift(-1) to get next‑day return
     forward_returns = returns.shift(-1).iloc[config.WINDOW_SIZE-1:-1].values
-
-    # Average forward return per ETF over the k‑nearest windows
     avg_returns = forward_returns[top_k_idx].mean(axis=0)
+
     best_idx = np.argmax(avg_returns)
     best_ticker = tickers[best_idx]
     pred_return = avg_returns[best_idx]
     similarity_score = sims[top_k_idx].mean()
 
-    return best_ticker, pred_return, similarity_score
+    all_pred_returns = {tickers[i]: float(avg_returns[i]) for i in range(len(tickers))}
+
+    return best_ticker, pred_return, similarity_score, all_pred_returns
 
 
 def evaluate_etf(ticker: str, returns: pd.DataFrame) -> dict:
@@ -169,10 +167,8 @@ def train_global(universe: str, returns: pd.DataFrame) -> dict:
 
     model, scaler = train_contrastive(train_ret, model, config.DEVICE)
 
-    # Compute embeddings for all training windows
     train_embeddings = compute_embeddings(train_ret, model, scaler, config.DEVICE)
 
-    # Current market window (last available)
     current_window = returns.iloc[-config.WINDOW_SIZE:].values
     current_window = scaler.transform(current_window)
     current_tensor = torch.tensor(current_window, dtype=torch.float32).unsqueeze(0).to(config.DEVICE)
@@ -181,16 +177,17 @@ def train_global(universe: str, returns: pd.DataFrame) -> dict:
         current_emb, _ = model(current_tensor)
     current_emb = current_emb.cpu().numpy().squeeze()
 
-    top_etf, pred_return, similarity = predict_top_etf(
+    best_ticker, pred_return, similarity, all_pred_returns = predict_top_etf(
         train_embeddings, train_ret, tickers, current_emb, config.K_NEIGHBORS
     )
 
-    metrics = evaluate_etf(top_etf, test_ret)
-    print(f"  Selected ETF: {top_etf}, Predicted Return: {pred_return*100:.2f}%, Similarity: {similarity:.3f}")
+    metrics = evaluate_etf(best_ticker, test_ret)
+    print(f"  Selected ETF: {best_ticker}, Predicted Return: {pred_return*100:.2f}%, Similarity: {similarity:.3f}")
     return {
-        "ticker": top_etf,
+        "ticker": best_ticker,
         "pred_return": pred_return,
         "similarity_score": similarity,
+        "all_pred_returns": all_pred_returns,
         "metrics": metrics,
         "test_start": test_ret.index[0].strftime("%Y-%m-%d"),
         "test_end": test_ret.index[-1].strftime("%Y-%m-%d"),
@@ -230,17 +227,18 @@ def train_adaptive(universe: str, returns: pd.DataFrame) -> dict:
         current_emb, _ = model(current_tensor)
     current_emb = current_emb.cpu().numpy().squeeze()
 
-    top_etf, pred_return, similarity = predict_top_etf(
+    best_ticker, pred_return, similarity, all_pred_returns = predict_top_etf(
         train_embeddings, train_ret, tickers, current_emb, config.K_NEIGHBORS
     )
 
-    metrics = evaluate_etf(top_etf, test_ret) if len(test_ret) > 0 else {}
+    metrics = evaluate_etf(best_ticker, test_ret) if len(test_ret) > 0 else {}
     lookback = (returns.index[-1] - cp_date).days
-    print(f"  Selected ETF: {top_etf}, Predicted Return: {pred_return*100:.2f}%, Similarity: {similarity:.3f}")
+    print(f"  Selected ETF: {best_ticker}, Predicted Return: {pred_return*100:.2f}%, Similarity: {similarity:.3f}")
     return {
-        "ticker": top_etf,
+        "ticker": best_ticker,
         "pred_return": pred_return,
         "similarity_score": similarity,
+        "all_pred_returns": all_pred_returns,
         "metrics": metrics,
         "change_point_date": cp_date.strftime("%Y-%m-%d"),
         "lookback_days": lookback,
