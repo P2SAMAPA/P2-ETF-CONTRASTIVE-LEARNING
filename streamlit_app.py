@@ -2,6 +2,7 @@
 Streamlit UI for P2-ETF-CONTRASTIVE-LEARNING.
 """
 import streamlit as st
+import pandas as pd
 import numpy as np
 from datetime import datetime
 import config
@@ -84,6 +85,17 @@ def display_metrics(metrics):
         st.markdown(f'<div class="metric-value">{format_pct(metrics.get("hit_rate"))}</div>', unsafe_allow_html=True)
 
 
+def display_predicted_returns_table(all_pred_returns: dict):
+    """Display a table of all ETFs and their predicted returns, sorted descending."""
+    if not all_pred_returns:
+        return
+    sorted_items = sorted(all_pred_returns.items(), key=lambda x: x[1], reverse=True)
+    df = pd.DataFrame(sorted_items, columns=["ETF", "Predicted Return"])
+    df["Predicted Return"] = df["Predicted Return"].apply(format_pct)
+    st.markdown("#### All Predicted Returns (Current Window)")
+    st.dataframe(df, use_container_width=True, hide_index=True)
+
+
 def display_card(data, mode="global"):
     if not data or not data.get("ticker"):
         st.info("⏳ Waiting for training output...")
@@ -115,6 +127,12 @@ def display_card(data, mode="global"):
     st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
     st.markdown(f'<div class="meta-text">Test: {data.get("test_start", "")} → {data.get("test_end", "")} ({metrics.get("n_days", "—")} days)</div>', unsafe_allow_html=True)
     display_metrics(metrics)
+
+    if mode == "Adaptive":
+        all_preds = data.get("all_pred_returns")
+        if all_preds:
+            st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
+            display_predicted_returns_table(all_preds)
 
     st.markdown('</div>', unsafe_allow_html=True)
 
