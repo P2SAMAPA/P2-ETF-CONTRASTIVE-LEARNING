@@ -34,22 +34,35 @@ tab_fi, tab_eq, tab_comb = st.tabs(["FI/Commodities", "Equity Sectors", "Combine
 results = load_latest_result()
 
 
+def safe_float(value):
+    """Safely convert any value to float, returning None if not possible."""
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (ValueError, TypeError):
+        return None
+
+
 def format_pct(value):
-    if value is None or (isinstance(value, float) and np.isnan(value)):
+    v = safe_float(value)
+    if v is None or np.isnan(v):
         return "—"
-    return f"{value*100:.1f}%"
+    return f"{v*100:.1f}%"
 
 
 def format_num(value, decimals=2):
-    if value is None or (isinstance(value, float) and np.isnan(value)):
+    v = safe_float(value)
+    if v is None or np.isnan(v):
         return "—"
-    return f"{value:.{decimals}f}"
+    return f"{v:.{decimals}f}"
 
 
 def format_similarity(value):
-    if value is None or (isinstance(value, float) and np.isnan(value)):
+    v = safe_float(value)
+    if v is None or np.isnan(v):
         return "—"
-    return f"{value:.3f}"
+    return f"{v:.3f}"
 
 
 def display_metrics(metrics):
