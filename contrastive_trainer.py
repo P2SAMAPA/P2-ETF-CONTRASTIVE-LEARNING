@@ -114,8 +114,24 @@ def predict_top_etf(embeddings: np.ndarray, returns: pd.DataFrame, tickers: list
     """
     sims = np.dot(embeddings, current_embedding)
     top_k_idx = np.argsort(sims)[-k:]
-
-    forward_returns = returns.shift(-1).iloc[config.WINDOW_SIZE-1:-1].values
+    
+    # FIX: Ensure forward_returns matches embeddings length exactly
+    # embeddings are created from windows [0:window_size], [1:window_size+1], ...
+    # so there are len(returns) - window_size + 1 embeddings
+    # The forward return for window ending at index i is returns at index i+1
+    window_size = config.WINDOW_SIZE
+    n_embeddings = len(embeddings)
+    
+    # forward return for each window is the return at the day after the window ends
+    # Use explicit length to match embeddings count exactly
+    forward_returns = returns.shift(-1).iloc[window_size-1:window_size-1 + n_embeddings].values
+    
+    # Safety check: ensure we don't go out of bounds
+    if len(forward_returns) < n_embeddings:
+        print(f"Warning: forward_returns length ({len(forward_returns)}) < embeddings ({n_embeddings})")
+        # Filter top_k_idx to only valid indices
+        top_k_idx = top_k_idx[top_k_idx < len(forward_returns)]
+    
     avg_returns = forward_returns[top_k_idx].mean(axis=0)
 
     best_idx = np.argmax(avg_returns)
